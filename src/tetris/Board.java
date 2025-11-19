@@ -20,7 +20,7 @@ public class Board extends JPanel implements ActionListener {
     private final int BOARD_WIDTH = 10;
     private final int BOARD_HEIGHT = 22;
     private final int INITIAL_DELAY = 400;
-    
+
     private Timer timer;
     private boolean isFallingFinished = false;
     private boolean isStarted = false;
@@ -36,15 +36,18 @@ public class Board extends JPanel implements ActionListener {
     private SidePanel sidePanel;
     private int score = 0;
     private int level = 1;
+    private AudioPlayer audio;
 
     public Board() {
         setFocusable(true);
         curPiece = new Tetromino();
         nextPiece = new Tetromino();
         nextPiece.setRandomShape();
-        
+
+        audio = new AudioPlayer();
+
         timer = new Timer(INITIAL_DELAY, this);
-        timer.start(); 
+        timer.start();
 
         board = new Shape[BOARD_WIDTH * BOARD_HEIGHT];
         addKeyListener(new TAdapter());
@@ -65,10 +68,12 @@ public class Board extends JPanel implements ActionListener {
         clearBoard();
         newPiece();
         timer.start();
+        audio.startMusic();
     }
 
     private void pause() {
-        if (!isStarted) return;
+        if (!isStarted)
+            return;
 
         isPaused = !isPaused;
         if (isPaused) {
@@ -87,7 +92,7 @@ public class Board extends JPanel implements ActionListener {
 
     private void doDrawing(Graphics2D g2d) {
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        
+
         Dimension size = getSize();
         int boardTop = (int) size.getHeight() - BOARD_HEIGHT * squareHeight();
 
@@ -95,7 +100,7 @@ public class Board extends JPanel implements ActionListener {
         g2d.setColor(new Color(40, 40, 40));
         for (int i = 0; i < BOARD_HEIGHT; ++i) {
             for (int j = 0; j < BOARD_WIDTH; ++j) {
-                 g2d.drawRect(j * squareWidth(), boardTop + i * squareHeight(), squareWidth(), squareHeight());
+                g2d.drawRect(j * squareWidth(), boardTop + i * squareHeight(), squareWidth(), squareHeight());
             }
         }
 
@@ -105,7 +110,7 @@ public class Board extends JPanel implements ActionListener {
                 Shape shape = shapeAt(j, BOARD_HEIGHT - i - 1);
                 if (shape != Shape.NoShape)
                     drawSquare(g2d, 0 + j * squareWidth(),
-                               boardTop + i * squareHeight(), shape, false);
+                            boardTop + i * squareHeight(), shape, false);
             }
         }
 
@@ -117,13 +122,13 @@ public class Board extends JPanel implements ActionListener {
                     break;
                 --ghostY;
             }
-            
+
             for (int i = 0; i < 4; ++i) {
                 int x = curX + curPiece.x(i);
                 int y = ghostY - curPiece.y(i);
                 drawSquare(g2d, 0 + x * squareWidth(),
-                           boardTop + (BOARD_HEIGHT - y - 1) * squareHeight(),
-                           curPiece.getShape(), true);
+                        boardTop + (BOARD_HEIGHT - y - 1) * squareHeight(),
+                        curPiece.getShape(), true);
             }
 
             // Draw Current Piece
@@ -131,8 +136,8 @@ public class Board extends JPanel implements ActionListener {
                 int x = curX + curPiece.x(i);
                 int y = curY - curPiece.y(i);
                 drawSquare(g2d, 0 + x * squareWidth(),
-                           boardTop + (BOARD_HEIGHT - y - 1) * squareHeight(),
-                           curPiece.getShape(), false);
+                        boardTop + (BOARD_HEIGHT - y - 1) * squareHeight(),
+                        curPiece.getShape(), false);
             }
         }
     }
@@ -145,6 +150,7 @@ public class Board extends JPanel implements ActionListener {
             --newY;
         }
         pieceDropped();
+        audio.playDrop();
     }
 
     private void oneLineDown() {
@@ -173,7 +179,7 @@ public class Board extends JPanel implements ActionListener {
     private void newPiece() {
         curPiece.setShape(nextPiece.getShape());
         nextPiece.setRandomShape();
-        
+
         curX = BOARD_WIDTH / 2 + 1;
         curY = BOARD_HEIGHT - 1 + curPiece.minY();
         canHold = true;
@@ -182,13 +188,16 @@ public class Board extends JPanel implements ActionListener {
             curPiece.setShape(Shape.NoShape);
             timer.stop();
             isStarted = false;
+            audio.playGameOver();
         }
-        if (sidePanel != null) sidePanel.repaint();
+        if (sidePanel != null)
+            sidePanel.repaint();
     }
-    
+
     private void holdPiece() {
-        if (!canHold) return;
-        
+        if (!canHold)
+            return;
+
         if (holdPiece == null) {
             holdPiece = new Tetromino();
             holdPiece.setShape(curPiece.getShape());
@@ -197,13 +206,14 @@ public class Board extends JPanel implements ActionListener {
             Shape temp = curPiece.getShape();
             curPiece.setShape(holdPiece.getShape());
             holdPiece.setShape(temp);
-            
+
             curX = BOARD_WIDTH / 2 + 1;
             curY = BOARD_HEIGHT - 1 + curPiece.minY();
         }
-        
+
         canHold = false;
-        if (sidePanel != null) sidePanel.repaint();
+        if (sidePanel != null)
+            sidePanel.repaint();
         repaint();
     }
 
@@ -243,7 +253,7 @@ public class Board extends JPanel implements ActionListener {
                 ++numFullLines;
                 for (int k = i; k < BOARD_HEIGHT - 1; ++k) {
                     for (int j = 0; j < BOARD_WIDTH; ++j)
-                         board[(k * BOARD_WIDTH) + j] = shapeAt(j, k + 1);
+                        board[(k * BOARD_WIDTH) + j] = shapeAt(j, k + 1);
                 }
             }
         }
@@ -253,28 +263,30 @@ public class Board extends JPanel implements ActionListener {
             score += numFullLines * 100 * level; // Basic scoring
             isFallingFinished = true;
             curPiece.setShape(Shape.NoShape);
-            
+            audio.playClear();
+
             // Level up every 10 lines
             if (numLinesRemoved / 10 > level - 1) {
                 level++;
                 int newDelay = Math.max(100, INITIAL_DELAY - (level * 30));
                 timer.setDelay(newDelay);
             }
-            
-            if (sidePanel != null) sidePanel.repaint();
+
+            if (sidePanel != null)
+                sidePanel.repaint();
             repaint();
         }
     }
 
     private void drawSquare(Graphics2D g, int x, int y, Shape shape, boolean isGhost) {
         Color colors[] = { new Color(0, 0, 0), new Color(204, 102, 102),
-            new Color(102, 204, 102), new Color(102, 102, 204),
-            new Color(204, 204, 102), new Color(204, 102, 204),
-            new Color(102, 204, 204), new Color(218, 170, 0)
+                new Color(102, 204, 102), new Color(102, 102, 204),
+                new Color(204, 204, 102), new Color(204, 102, 204),
+                new Color(102, 204, 204), new Color(218, 170, 0)
         };
 
         Color color = colors[shape.ordinal()];
-        
+
         if (isGhost) {
             g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 50)); // Transparent
             g.fillRect(x + 1, y + 1, squareWidth() - 2, squareHeight() - 2);
@@ -292,21 +304,43 @@ public class Board extends JPanel implements ActionListener {
 
             g.setColor(color.darker());
             g.drawLine(x + 1, y + squareHeight() - 1,
-                             x + squareWidth() - 1, y + squareHeight() - 1);
+                    x + squareWidth() - 1, y + squareHeight() - 1);
             g.drawLine(x + squareWidth() - 1, y + squareHeight() - 1,
-                             x + squareWidth() - 1, y + 1);
+                    x + squareWidth() - 1, y + 1);
         }
     }
 
-    private int squareWidth() { return (int) getSize().getWidth() / BOARD_WIDTH; }
-    private int squareHeight() { return (int) getSize().getHeight() / BOARD_HEIGHT; }
-    private Shape shapeAt(int x, int y) { return board[(y * BOARD_WIDTH) + x]; }
-    
-    public int getScore() { return score; }
-    public int getLevel() { return level; }
-    public int getLines() { return numLinesRemoved; }
-    public Tetromino getNextPiece() { return nextPiece; }
-    public Tetromino getHoldPiece() { return holdPiece; }
+    private int squareWidth() {
+        return (int) getSize().getWidth() / BOARD_WIDTH;
+    }
+
+    private int squareHeight() {
+        return (int) getSize().getHeight() / BOARD_HEIGHT;
+    }
+
+    private Shape shapeAt(int x, int y) {
+        return board[(y * BOARD_WIDTH) + x];
+    }
+
+    public int getScore() {
+        return score;
+    }
+
+    public int getLevel() {
+        return level;
+    }
+
+    public int getLines() {
+        return numLinesRemoved;
+    }
+
+    public Tetromino getNextPiece() {
+        return nextPiece;
+    }
+
+    public Tetromino getHoldPiece() {
+        return holdPiece;
+    }
 
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -321,7 +355,7 @@ public class Board extends JPanel implements ActionListener {
     class TAdapter extends KeyAdapter {
         @Override
         public void keyPressed(KeyEvent e) {
-            if (!isStarted || curPiece.getShape() == Shape.NoShape) {  
+            if (!isStarted || curPiece.getShape() == Shape.NoShape) {
                 return;
             }
 
@@ -337,16 +371,20 @@ public class Board extends JPanel implements ActionListener {
 
             switch (keycode) {
                 case KeyEvent.VK_LEFT:
-                    tryMove(curPiece, curX - 1, curY, false);
+                    if (tryMove(curPiece, curX - 1, curY, false))
+                        audio.playMove();
                     break;
                 case KeyEvent.VK_RIGHT:
-                    tryMove(curPiece, curX + 1, curY, false);
+                    if (tryMove(curPiece, curX + 1, curY, false))
+                        audio.playMove();
                     break;
                 case KeyEvent.VK_DOWN:
-                    tryMove(curPiece.rotateRight(), curX, curY, false);
+                    if (tryMove(curPiece.rotateRight(), curX, curY, false))
+                        audio.playRotate();
                     break;
                 case KeyEvent.VK_UP:
-                    tryMove(curPiece.rotateLeft(), curX, curY, false);
+                    if (tryMove(curPiece.rotateLeft(), curX, curY, false))
+                        audio.playRotate();
                     break;
                 case KeyEvent.VK_SPACE:
                     dropDown();

@@ -74,8 +74,8 @@ public class Tetromino {
         result.pieceShape = pieceShape;
 
         for (int i = 0; i < 4; ++i) {
-            result.setX(i, result.y(i));
-            result.setY(i, -result.x(i));
+            result.setX(i, y(i));
+            result.setY(i, -x(i));
         }
         return result;
     }
@@ -88,8 +88,8 @@ public class Tetromino {
         result.pieceShape = pieceShape;
 
         for (int i = 0; i < 4; ++i) {
-            result.setX(i, -result.y(i));
-            result.setY(i, result.x(i));
+            result.setX(i, -y(i));
+            result.setY(i, x(i));
         }
         return result;
     }
