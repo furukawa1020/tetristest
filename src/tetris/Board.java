@@ -3,6 +3,7 @@ package tetris;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -38,6 +39,16 @@ public class Board extends JPanel implements ActionListener {
     private int level = 1;
     private AudioPlayer audio;
 
+    // Lock Delay
+    private Timer lockTimer;
+    private boolean isLocking = false;
+    private final int LOCK_DELAY = 500;
+
+    // Visual Juice
+    private int shakeOffsetX = 0;
+    private int shakeOffsetY = 0;
+    private int shakeDuration = 0;
+
     public Board() {
         setFocusable(true);
         curPiece = new Tetromino();
@@ -49,10 +60,19 @@ public class Board extends JPanel implements ActionListener {
         timer = new Timer(INITIAL_DELAY, this);
         timer.start();
 
+        lockTimer = new Timer(LOCK_DELAY, e -> {
+            if (isLocking) {
+                pieceDropped();
+                isLocking = false;
+                lockTimer.stop();
+            }
+        });
+        lockTimer.setRepeats(false);
+
         board = new Shape[BOARD_WIDTH * BOARD_HEIGHT];
         addKeyListener(new TAdapter());
         clearBoard();
-        setBackground(new Color(30, 30, 30)); // Darker background for board
+        setBackground(new Color(30, 30, 30));
     }
 
     public void setSidePanel(SidePanel sp) {
@@ -62,6 +82,7 @@ public class Board extends JPanel implements ActionListener {
     public void start() {
         isStarted = true;
         isPaused = false;
+        isLocking = false;
         numLinesRemoved = 0;
         score = 0;
         level = 1;
@@ -78,6 +99,7 @@ public class Board extends JPanel implements ActionListener {
         isPaused = !isPaused;
         if (isPaused) {
             timer.stop();
+            lockTimer.stop();
         } else {
             timer.start();
         }
@@ -92,6 +114,17 @@ public class Board extends JPanel implements ActionListener {
 
     private void doDrawing(Graphics2D g2d) {
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        // Apply Screen Shake
+        if (shakeDuration > 0) {
+            shakeOffsetX = (int) (Math.random() * 10 - 5);
+            shakeOffsetY = (int) (Math.random() * 10 - 5);
+            shakeDuration--;
+        } else {
+            shakeOffsetX = 0;
+            shakeOffsetY = 0;
+        }
+        g2d.translate(shakeOffsetX, shakeOffsetY);
 
         Dimension size = getSize();
         int boardTop = (int) size.getHeight() - BOARD_HEIGHT * squareHeight();
@@ -140,6 +173,25 @@ public class Board extends JPanel implements ActionListener {
                         curPiece.getShape(), false);
             }
         }
+
+        // Game Over Overlay
+        if (!isStarted) {
+            g2d.setColor(new Color(0, 0, 0, 150));
+            g2d.fillRect(0, 0, getWidth(), getHeight());
+
+            g2d.setColor(Color.WHITE);
+            g2d.setFont(new Font("Segoe UI", Font.BOLD, 30));
+            String msg = "GAME OVER";
+            int msgWidth = g2d.getFontMetrics().stringWidth(msg);
+            g2d.drawString(msg, (getWidth() - msgWidth) / 2, getHeight() / 2 - 20);
+
+            g2d.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+            String restartMsg = "Press 'R' to Restart";
+            int restartWidth = g2d.getFontMetrics().stringWidth(restartMsg);
+            g2d.drawString(restartMsg, (getWidth() - restartWidth) / 2, getHeight() / 2 + 20);
+        }
+
+        g2d.translate(-shakeOffsetX, -shakeOffsetY);
     }
 
     private void dropDown() {
@@ -151,11 +203,22 @@ public class Board extends JPanel implements ActionListener {
         }
         pieceDropped();
         audio.playDrop();
+        triggerShake(5); // Shake on hard drop
     }
 
     private void oneLineDown() {
-        if (!tryMove(curPiece, curX, curY - 1, false))
-            pieceDropped();
+        if (!tryMove(curPiece, curX, curY - 1, false)) {
+            if (!isLocking) {
+                isLocking = true;
+                lockTimer.restart();
+            }
+        } else {
+            // Successfully moved down, reset lock delay
+            if (isLocking) {
+                isLocking = false;
+                lockTimer.stop();
+            }
+        }
     }
 
     private void clearBoard() {
@@ -183,6 +246,7 @@ public class Board extends JPanel implements ActionListener {
         curX = BOARD_WIDTH / 2 + 1;
         curY = BOARD_HEIGHT - 1 + curPiece.minY();
         canHold = true;
+        isLocking = false;
 
         if (!tryMove(curPiece, curX, curY, false)) {
             curPiece.setShape(Shape.NoShape);
@@ -212,6 +276,7 @@ public class Board extends JPanel implements ActionListener {
         }
 
         canHold = false;
+        isLocking = false;
         if (sidePanel != null)
             sidePanel.repaint();
         repaint();
@@ -231,9 +296,36 @@ public class Board extends JPanel implements ActionListener {
             curPiece = newPiece;
             curX = newX;
             curY = newY;
+
+            // Reset lock delay on successful move
+            if (isLocking) {
+                lockTimer.restart();
+            }
+
             repaint();
         }
         return true;
+    }
+
+    // Wall Kick logic
+    private void tryRotate(boolean left) {
+        Tetromino rotated = left ? curPiece.rotateLeft() : curPiece.rotateRight();
+
+        // 1. Try normal rotation
+        if (tryMove(rotated, curX, curY, false)) {
+            audio.playRotate();
+            return;
+        }
+
+        // 2. Try Wall Kicks (Simple offsets)
+        int[][] offsets = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 1, 1 }, { -1, 1 } };
+
+        for (int[] offset : offsets) {
+            if (tryMove(rotated, curX + offset[0], curY + offset[1], false)) {
+                audio.playRotate();
+                return;
+            }
+        }
     }
 
     private void removeFullLines() {
@@ -260,12 +352,12 @@ public class Board extends JPanel implements ActionListener {
 
         if (numFullLines > 0) {
             numLinesRemoved += numFullLines;
-            score += numFullLines * 100 * level; // Basic scoring
+            score += numFullLines * 100 * level;
             isFallingFinished = true;
             curPiece.setShape(Shape.NoShape);
             audio.playClear();
+            triggerShake(3 * numFullLines); // Shake on clear
 
-            // Level up every 10 lines
             if (numLinesRemoved / 10 > level - 1) {
                 level++;
                 int newDelay = Math.max(100, INITIAL_DELAY - (level * 30));
@@ -278,6 +370,10 @@ public class Board extends JPanel implements ActionListener {
         }
     }
 
+    private void triggerShake(int duration) {
+        this.shakeDuration = duration;
+    }
+
     private void drawSquare(Graphics2D g, int x, int y, Shape shape, boolean isGhost) {
         Color colors[] = { new Color(0, 0, 0), new Color(204, 102, 102),
                 new Color(102, 204, 102), new Color(102, 102, 204),
@@ -288,13 +384,12 @@ public class Board extends JPanel implements ActionListener {
         Color color = colors[shape.ordinal()];
 
         if (isGhost) {
-            g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 50)); // Transparent
+            g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 50));
             g.fillRect(x + 1, y + 1, squareWidth() - 2, squareHeight() - 2);
             g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 100));
             g.setStroke(new BasicStroke(1));
             g.drawRect(x + 1, y + 1, squareWidth() - 2, squareHeight() - 2);
         } else {
-            // Gradient-ish effect or bevel
             g.setColor(color);
             g.fillRect(x + 1, y + 1, squareWidth() - 2, squareHeight() - 2);
 
@@ -355,11 +450,18 @@ public class Board extends JPanel implements ActionListener {
     class TAdapter extends KeyAdapter {
         @Override
         public void keyPressed(KeyEvent e) {
-            if (!isStarted || curPiece.getShape() == Shape.NoShape) {
+            int keycode = e.getKeyCode();
+
+            if (!isStarted) {
+                if (keycode == 'r' || keycode == 'R') {
+                    start();
+                }
                 return;
             }
 
-            int keycode = e.getKeyCode();
+            if (curPiece.getShape() == Shape.NoShape) {
+                return;
+            }
 
             if (keycode == 'p' || keycode == 'P') {
                 pause();
@@ -379,12 +481,10 @@ public class Board extends JPanel implements ActionListener {
                         audio.playMove();
                     break;
                 case KeyEvent.VK_DOWN:
-                    if (tryMove(curPiece.rotateRight(), curX, curY, false))
-                        audio.playRotate();
+                    tryRotate(false);
                     break;
                 case KeyEvent.VK_UP:
-                    if (tryMove(curPiece.rotateLeft(), curX, curY, false))
-                        audio.playRotate();
+                    tryRotate(true);
                     break;
                 case KeyEvent.VK_SPACE:
                     dropDown();
