@@ -28,7 +28,7 @@ public class Board extends JPanel implements ActionListener {
     private Tetromino curPiece;
     private Shape[] board;
 
-    public Board(Game parent) {
+    public Board() {
         setFocusable(true);
         curPiece = new Tetromino();
         timer = new Timer(PERIOD_INTERVAL, this);
